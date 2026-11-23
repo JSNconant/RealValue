@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     rentcast_api_key: str = ""
     cors_allowed_origins: str = "http://localhost:3000"
+    cors_allowed_origin_regex: str = r"https://.*\.vercel\.app"
     enable_live_valuations: bool = False
     enable_demo_mode: bool = True
     provider_request_timeout_seconds: float = 12

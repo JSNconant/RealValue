@@ -17,9 +17,11 @@ from .valuation.comps import local_similarity_weight, robust_weighted_median
 app = FastAPI(title="RealValue API", version="0.1.0")
 
 origins = [origin.strip() for origin in settings.cors_allowed_origins.split(",") if origin.strip()]
+origin_regex = settings.cors_allowed_origin_regex.strip() if settings.cors_allowed_origin_regex.strip() else None
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=origin_regex,
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Accept"],
@@ -36,7 +38,13 @@ def healthz():
 @app.get("/readyz")
 def readyz():
     live_ready = bool(settings.rentcast_api_key) and settings.enable_live_valuations
-    return {"status": "ready", "live_provider_ready": live_ready, "demo_ready": settings.enable_demo_mode}
+    return {
+        "status": "ready",
+        "live_provider_ready": live_ready,
+        "demo_ready": settings.enable_demo_mode,
+        "cors_allowed_origins": origins,
+        "cors_allowed_origin_regex": origin_regex,
+    }
 
 
 @app.post("/api/v1/address/search")
