@@ -25,7 +25,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Accept"],
 )
 
-FIXTURE_PATH = Path(__file__).resolve().parents[3] / "fixtures" / "demo_property.json"
+FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "demo_property.json"
 
 
 @app.get("/healthz")
