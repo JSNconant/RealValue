@@ -1,0 +1,21 @@
+{
+  "demo": true,
+  "address": "123 Fictional Ave, Austin, TX 78704",
+  "property": {
+    "id": "FIXTURE-AUSTIN-001",
+    "propertyType": "Single Family",
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "squareFootage": 1800,
+    "lotSize": 7200,
+    "yearBuilt": 1998,
+    "latitude": 30.245,
+    "longitude": -97.775
+  },
+  "comparables": [
+    {"id":"FIXTURE-C1","address":"101 Fictional Oak Lane","distanceMiles":0.8,"salePrice":735000,"saleDate":"2026-09-18","squareFootage":1760,"bedrooms":3,"bathrooms":2,"lotSize":7000,"yearBuilt":1996},
+    {"id":"FIXTURE-C2","address":"204 Fictional Hill Road","distanceMiles":1.1,"salePrice":748000,"saleDate":"2026-10-02","squareFootage":1840,"bedrooms":3,"bathrooms":2.5,"lotSize":7600,"yearBuilt":2000},
+    {"id":"FIXTURE-C3","address":"318 Fictional Creek Way","distanceMiles":1.4,"salePrice":725000,"saleDate":"2026-08-29","squareFootage":1785,"bedrooms":3,"bathrooms":2,"lotSize":6900,"yearBuilt":1995},
+    {"id":"FIXTURE-C4","address":"57 Fictional Ridge Drive","distanceMiles":2.0,"salePrice":690000,"saleDate":"2026-07-11","squareFootage":1680,"bedrooms":3,"bathrooms":2,"lotSize":6500,"yearBuilt":1992}
+  ]
+}
