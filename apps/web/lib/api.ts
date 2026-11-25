@@ -28,13 +28,26 @@ export type ValuationResult = {
   disclaimers: string[];
 };
 
+export type AddressMatch = {
+  address: string;
+  provider_id: string | null;
+  demo: boolean;
+};
+
 const CACHE_PREFIX = "realvalue:valuation:v1:";
+const ADDRESS_CACHE_PREFIX = "realvalue:address-search:v1:";
 const CACHE_TTL_MS = 1000 * 60 * 60 * 6;
 const inFlightRequests = new Map<string, Promise<ValuationResult>>();
+const inFlightAddressRequests = new Map<string, Promise<AddressMatch[]>>();
 
 function cacheKey(address: string, demo: boolean): string {
   const normalized = address.trim().toLowerCase().replace(/\s+/g, " ");
   return `${CACHE_PREFIX}${demo ? "demo" : "live"}:${normalized}`;
+}
+
+function addressCacheKey(query: string): string {
+  const normalized = query.trim().toLowerCase().replace(/\s+/g, " ");
+  return `${ADDRESS_CACHE_PREFIX}${normalized}`;
 }
 
 function readCached(key: string): ValuationResult | null {
@@ -55,6 +68,28 @@ function readCached(key: string): ValuationResult | null {
 }
 
 function writeCached(key: string, data: ValuationResult): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify({ expiresAt: Date.now() + CACHE_TTL_MS, data }));
+}
+
+function readCachedAddresses(key: string): AddressMatch[] | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { expiresAt: number; data: AddressMatch[] };
+    if (!parsed.expiresAt || Date.now() > parsed.expiresAt) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return parsed.data;
+  } catch {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+}
+
+function writeCachedAddresses(key: string, data: AddressMatch[]): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, JSON.stringify({ expiresAt: Date.now() + CACHE_TTL_MS, data }));
 }
@@ -99,6 +134,43 @@ export async function getDemoValuation(address: string): Promise<ValuationResult
 
 export async function getLiveValuation(address: string): Promise<ValuationResult> {
   return requestValuation(address, false);
+}
+
+export async function searchAddresses(query: string): Promise<AddressMatch[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 5) return [];
+  const key = addressCacheKey(trimmed);
+  const cached = readCachedAddresses(key);
+  if (cached) return cached;
+
+  const existing = inFlightAddressRequests.get(key);
+  if (existing) return existing;
+
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  const promise = fetch(`${base}/api/v1/address/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ q: trimmed }),
+    cache: "no-store",
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.detail?.message || `Address search failed (${response.status})`);
+      }
+      return response.json() as Promise<{ matches: AddressMatch[] }>;
+    })
+    .then((result) => {
+      const matches = result.matches ?? [];
+      writeCachedAddresses(key, matches);
+      return matches;
+    })
+    .finally(() => {
+      inFlightAddressRequests.delete(key);
+    });
+
+  inFlightAddressRequests.set(key, promise);
+  return promise;
 }
 
 export function formatUsd(cents: number | null): string {

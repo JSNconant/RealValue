@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     max_searches_per_ip_per_hour: int = 30
     valuation_cache_ttl_seconds: int = 21600
     valuation_cache_max_entries: int = 200
+    address_search_cache_ttl_seconds: int = 21600
+    address_search_min_chars: int = 5
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

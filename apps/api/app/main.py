@@ -36,6 +36,7 @@ app.add_middleware(
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "demo_property.json"
 valuation_cache: dict[str, tuple[datetime, dict]] = {}
+address_search_cache: dict[str, tuple[datetime, dict]] = {}
 
 
 def _normalize_address(value: str) -> str:
@@ -69,6 +70,32 @@ def _cache_set(key: str, payload: dict) -> None:
     valuation_cache[key] = (datetime.now(timezone.utc) + timedelta(seconds=ttl), payload)
 
 
+def _search_cache_key(query: str) -> str:
+    return _normalize_address(query)
+
+
+def _search_cache_get(key: str) -> dict | None:
+    cached = address_search_cache.get(key)
+    if not cached:
+        return None
+    expires_at, payload = cached
+    if expires_at <= datetime.now(timezone.utc):
+        address_search_cache.pop(key, None)
+        return None
+    return payload
+
+
+def _search_cache_set(key: str, payload: dict) -> None:
+    ttl = max(0, settings.address_search_cache_ttl_seconds)
+    if ttl == 0:
+        return
+    max_entries = max(1, settings.valuation_cache_max_entries)
+    if len(address_search_cache) >= max_entries:
+        oldest_key = min(address_search_cache.items(), key=lambda item: item[1][0])[0]
+        address_search_cache.pop(oldest_key, None)
+    address_search_cache[key] = (datetime.now(timezone.utc) + timedelta(seconds=ttl), payload)
+
+
 @app.get("/healthz")
 def healthz():
     return {"status": "ok", "service": "realvalue-api"}
@@ -85,14 +112,27 @@ def readyz():
         "cors_allowed_origin_regex": origin_regex,
         "valuation_cache_ttl_seconds": settings.valuation_cache_ttl_seconds,
         "valuation_cache_entries": len(valuation_cache),
+        "address_search_cache_ttl_seconds": settings.address_search_cache_ttl_seconds,
+        "address_search_cache_entries": len(address_search_cache),
+        "address_search_min_chars": settings.address_search_min_chars,
     }
 
 
 @app.post("/api/v1/address/search")
 async def address_search(payload: AddressSearchRequest):
+    if len(payload.q.strip()) < settings.address_search_min_chars:
+        return {"matches": []}
+
+    search_key = _search_cache_key(payload.q)
+    cached = _search_cache_get(search_key)
+    if cached is not None:
+        return cached
+
     if not settings.rentcast_api_key:
         if settings.enable_demo_mode:
-            return {"matches": [{"address": "123 Fictional Ave, Austin, TX 78704", "provider_id": "FIXTURE-AUSTIN-001", "demo": True}]}
+            response = {"matches": [{"address": "123 Fictional Ave, Austin, TX 78704", "provider_id": "FIXTURE-AUSTIN-001", "demo": True}]}
+            _search_cache_set(search_key, response)
+            return response
         return {"matches": []}
 
     provider = RentCastProvider(settings.rentcast_api_key, settings.provider_request_timeout_seconds)
@@ -102,7 +142,9 @@ async def address_search(payload: AddressSearchRequest):
         raise HTTPException(status_code=502, detail={"code": "provider_error", "message": "Property provider request failed", "status": exc.response.status_code})
     except httpx.RequestError:
         raise HTTPException(status_code=503, detail={"code": "provider_unavailable", "message": "Property provider is unavailable"})
-    return {"matches": [{"address": r.get("formattedAddress"), "provider_id": r.get("id"), "demo": False} for r in records]}
+    response = {"matches": [{"address": r.get("formattedAddress"), "provider_id": r.get("id"), "demo": False} for r in records[:8]]}
+    _search_cache_set(search_key, response)
+    return response
 
 
 def _demo_valuation(address: str, as_of: date) -> Valuation:

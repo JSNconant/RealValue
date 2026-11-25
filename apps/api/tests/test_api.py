@@ -18,3 +18,9 @@ def test_demo_valuation_is_explicitly_unvalidated():
     assert body["estimate_cents"] is not None
     assert body["interval_low_cents"] is None
     assert "DEMO — NOT A LIVE VALUATION" in body["disclaimers"]
+
+
+def test_address_search_short_query_returns_empty_matches():
+    response = client.post("/api/v1/address/search", json={"q": "123"})
+    assert response.status_code == 200
+    assert response.json() == {"matches": []}

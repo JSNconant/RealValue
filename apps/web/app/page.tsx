@@ -1,16 +1,41 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { getDemoValuation, getLiveValuation, formatUsd, type ValuationResult } from "../lib/api";
+import { FormEvent, useEffect, useState } from "react";
+import { getDemoValuation, getLiveValuation, formatUsd, searchAddresses, type AddressMatch, type ValuationResult } from "../lib/api";
 
 export default function Home() {
   const [address, setAddress] = useState("123 Fictional Ave, Austin, TX 78704");
   const [result, setResult] = useState<ValuationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [suggestions, setSuggestions] = useState<AddressMatch[]>([]);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  useEffect(() => {
+    const query = address.trim();
+    if (query.length < 5) {
+      setSuggestions([]);
+      return;
+    }
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setSuggestionLoading(true);
+        const matches = await searchAddresses(query);
+        setSuggestions(matches);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSuggestionLoading(false);
+      }
+    }, 400);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [address]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setShowSuggestions(false);
     setLoading(true);
     setError("");
     try {
@@ -23,6 +48,7 @@ export default function Home() {
   }
 
   async function loadDemo() {
+    setShowSuggestions(false);
     setLoading(true);
     setError("");
     try {
@@ -91,10 +117,29 @@ export default function Home() {
         <form onSubmit={submit} className="search">
           <label htmlFor="address">Residential address</label>
           <div className="search-row">
-            <input id="address" value={address} onChange={(event) => setAddress(event.target.value)} maxLength={300} required />
+            <input id="address" value={address} onFocus={() => setShowSuggestions(true)} onChange={(event) => setAddress(event.target.value)} maxLength={300} required />
             <button disabled={loading}>{loading ? "Searching…" : "Search"}</button>
             <button type="button" className="demo-button" onClick={loadDemo} disabled={loading}>Load demo</button>
           </div>
+          {showSuggestions && (suggestionLoading || suggestions.length > 0) && (
+            <div className="suggestions-wrap">
+              {suggestionLoading && <div className="suggestion-hint">Finding matching addresses…</div>}
+              {!suggestionLoading && suggestions.map((item) => (
+                <button
+                  type="button"
+                  key={`${item.provider_id ?? "unknown"}:${item.address}`}
+                  className="suggestion-item"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setAddress(item.address);
+                    setShowSuggestions(false);
+                  }}
+                >
+                  {item.address}
+                </button>
+              ))}
+            </div>
+          )}
         </form>
       </section>
 
