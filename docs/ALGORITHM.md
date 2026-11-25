@@ -43,3 +43,19 @@ Live numeric estimates are disabled until backtesting is complete. A live lookup
 - Independent calibration of future predictive intervals.
 - Subgroup and drift analysis.
 - Model card and go/no-go approval.
+
+## Live provider engine (v0.1)
+
+The live implementation requires RentCast property-record support for the subject and provider-recorded last-sale facts for comparable properties. It:
+
+- verifies supported residential property types;
+- requires subject living area;
+- removes the subject itself and future-dated sales;
+- removes nonmatching property types and sales older than 365 days;
+- applies hard filters for living-area difference and 10-mile distance;
+- weights candidates by distance, living area, effective age, lot area, ZIP match and recency;
+- reconciles raw sale prices with a weighted median;
+- requires at least three qualifying records;
+- exposes every exclusion reason and source record ID.
+
+The live engine does not invent structural, condition or market-time adjustments. Missing condition and unknown concessions widen caveats. It publishes no descriptive spread as a predictive interval. It remains `experimental_market_indicator` and must not be used as an appraisal or lending opinion.

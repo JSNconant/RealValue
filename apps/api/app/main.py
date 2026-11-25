@@ -13,10 +13,17 @@ from .config import settings
 from .providers.rentcast import RentCastProvider
 from .schemas import AddressSearchRequest, Comparable, EstimateStatus, Evidence, Valuation, ValuationRequest
 from .valuation.comps import local_similarity_weight, robust_weighted_median
+from .valuation.live_comps import build_live_comparable_indicator
 
 app = FastAPI(title="RealValue API", version="0.1.0")
 
-origins = [origin.strip() for origin in settings.cors_allowed_origins.split(",") if origin.strip()]
+origins = []
+for origin in settings.cors_allowed_origins.split(","):
+    origin = origin.strip()
+    if origin and not origin.startswith(("http://", "https://")):
+        origin = f"https://{origin}"
+    if origin:
+        origins.append(origin)
 origin_regex = settings.cors_allowed_origin_regex.strip() if settings.cors_allowed_origin_regex.strip() else None
 app.add_middleware(
     CORSMiddleware,
@@ -190,25 +197,86 @@ async def valuation(payload: ValuationRequest):
         confidence_status="provider_reported",
     )
 
-    qualifying = [c for c in comps if c.get("lastSalePrice") and c.get("lastSaleDate") and c.get("propertyType") == subject.get("propertyType")]
-    if len(qualifying) < 3:
-        return Valuation(
-            run_id=f"insufficient-{uuid.uuid4()}",
-            estimate_status=EstimateStatus.INSUFFICIENT_EVIDENCE,
-            as_of_date=as_of,
-            model_version="comps-gate-v0.1",
-            data_snapshot_version=f"rentcast-{now.date().isoformat()}",
-            address=subject.get("formattedAddress", payload.address),
-            property_facts=subject,
-            comparables=[],
-            warnings=["Fewer than three attributable arm's-length-style closed transactions were found"],
-            assumptions=["Live estimates remain disabled pending validated market-supported adjustments"],
-            sources=[subject_evidence],
-            explanation="Insufficient comparable evidence is available for a defensible estimate. Property facts are shown where the provider supplied them.",
-            disclaimers=["No valuation is reported", "Experimental estimate, not an appraisal", "No 5% accuracy claim"],
-        )
+    qualifying = build_live_comparable_indicator(subject, comps, as_of)
 
-    raise HTTPException(status_code=501, detail={"code":"model_not_implemented","message":"Attributable live comparables were found, but the fitted valuation model has not passed validation gates"})
+    sources = [subject_evidence]
+    comparable_items: list[Comparable] = []
+    for index, item in enumerate(qualifying["selected"], start=1):
+        evidence_id = f"E-COMP-{index}"
+        sources.append(Evidence(
+            evidence_id=evidence_id,
+            provider="RentCast",
+            record_id=item.get("record_id") or None,
+            field="last_sale_record",
+            value=f"Provider-reported sale of {item['sale_price_cents'] / 100:,.2f} USD on {item['sale_date'].isoformat()}",
+            retrieved_at=now,
+            observed_at=item["sale_date"],
+            source_url="https://developers.rentcast.io/reference/property-records",
+            source_url_label="provider_documentation",
+            confidence_status="provider_reported",
+        ))
+        comparable_items.append(Comparable(
+            address=item["address"],
+            distance_miles=item["distance_miles"],
+            transaction_date=item["sale_date"],
+            sale_price_cents=item["sale_price_cents"],
+            living_area_sqft=item["living_area_sqft"],
+            bedrooms=item["bedrooms"],
+            bathrooms=item["bathrooms"],
+            lot_area_sqft=item["lot_area_sqft"],
+            year_built=item["year_built"],
+            adjusted_price_cents=item["sale_price_cents"],
+            weight=item["weight"],
+            evidence_ids=[evidence_id],
+        ))
+
+    result_status = qualifying["status"]
+    if result_status == "unsupported_property":
+        estimate_status = EstimateStatus.UNSUPPORTED_PROPERTY
+    elif result_status == "insufficient_evidence":
+        estimate_status = EstimateStatus.INSUFFICIENT_EVIDENCE
+    else:
+        estimate_status = EstimateStatus.EXPERIMENTAL_MARKET_INDICATOR
+
+    if estimate_status == EstimateStatus.EXPERIMENTAL_MARKET_INDICATOR:
+        selected_count = len(comparable_items)
+        explanation = (
+            f"This is an unvalidated experimental sales-comparison indicator based on "
+            f"{selected_count} provider-reported closed-sale records. The current estimate reconciles "
+            f"their raw transaction prices using transparent location, living-area, age, lot-size, "
+            f"ZIP, and recency weights. No market-time index or fitted structural coefficient was applied, "
+            f"and the provider records do not independently establish arm's-length status or concessions. "
+            f"This is not a calibrated market value or appraisal."
+        )
+        disclaimers = ["EXPERIMENTAL — NOT VALIDATED", "Experimental estimate, not an appraisal or offer", "No 5% accuracy claim"]
+    elif estimate_status == EstimateStatus.INSUFFICIENT_EVIDENCE:
+        explanation = "Insufficient attributable comparable-sale evidence is available for a defensible estimate. Property facts are shown where the provider supplied them."
+        disclaimers = ["NO VALUATION REPORTED", "Experimental estimate, not an appraisal", "No 5% accuracy claim"]
+    else:
+        explanation = "The subject property type is outside the initial supported residential sales-comparison scope."
+        disclaimers = ["PROPERTY TYPE NOT SUPPORTED", "Experimental estimate, not an appraisal", "No 5% accuracy claim"]
+
+    return Valuation(
+        run_id=f"live-{uuid.uuid4()}",
+        estimate_status=estimate_status,
+        estimate_cents=qualifying["estimate_cents"],
+        as_of_date=as_of,
+        model_version="rentcast-sales-comparison-v0.1",
+        data_snapshot_version=f"rentcast-provider-{now.date().isoformat()}",
+        address=subject.get("formattedAddress", payload.address),
+        property_facts=subject,
+        comparables=comparable_items,
+        excluded_comparables=qualifying["excluded"],
+        warnings=qualifying["warnings"],
+        assumptions=[
+            "Raw provider-reported sale prices are not adjusted with invented dollar coefficients",
+            "Comparable distance, area, age, lot, ZIP, and recency weights are unvalidated defaults",
+            "A comparable price spread is descriptive and is not a predictive interval",
+        ],
+        sources=sources,
+        explanation=explanation,
+        disclaimers=disclaimers,
+    )
 
 
 @app.get("/api/v1/valuations/{run_id}")

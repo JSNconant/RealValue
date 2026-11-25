@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { getDemoValuation, formatUsd, type ValuationResult } from "../lib/api";
+import { getDemoValuation, getLiveValuation, formatUsd, type ValuationResult } from "../lib/api";
 
 export default function Home() {
   const [address, setAddress] = useState("123 Fictional Ave, Austin, TX 78704");
@@ -14,9 +14,21 @@ export default function Home() {
     setLoading(true);
     setError("");
     try {
-      setResult(await getDemoValuation(address));
+      setResult(await getLiveValuation(address));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to search");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadDemo() {
+    setLoading(true);
+    setError("");
+    try {
+      setResult(await getDemoValuation(address));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load demo");
     } finally {
       setLoading(false);
     }
@@ -31,6 +43,7 @@ export default function Home() {
           <div className="search-row">
             <input id="address" value={address} onChange={(event) => setAddress(event.target.value)} maxLength={300} required />
             <button disabled={loading}>{loading ? "Searching…" : "Search"}</button>
+            <button type="button" className="demo-button" onClick={loadDemo} disabled={loading}>Load demo</button>
           </div>
         </form>
       </section>
@@ -39,7 +52,7 @@ export default function Home() {
 
       {result && (
         <section className="results">
-          <div className="demo-banner">DEMO — NOT A LIVE VALUATION</div>
+          <div className={result.disclaimers.some((item) => item.includes("DEMO") || item.includes("Fictional")) ? "demo-banner" : "status-banner"}>{result.disclaimers.some((item) => item.includes("DEMO") || item.includes("Fictional")) ? "DEMO — NOT A LIVE VALUATION" : "LIVE PROVIDER DATA — EXPERIMENTAL, NOT VALIDATED"}</div>
           <div className="hero">
             <div>
               <p className="eyebrow">{result.estimate_status.replaceAll("_", " ").toUpperCase()}</p>

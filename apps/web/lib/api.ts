@@ -43,6 +43,21 @@ export async function getDemoValuation(address: string): Promise<ValuationResult
   return response.json();
 }
 
+export async function getLiveValuation(address: string): Promise<ValuationResult> {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  const response = await fetch(`${base}/api/v1/valuations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address, demo: false }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail?.message || `Request failed (${response.status})`);
+  }
+  return response.json();
+}
+
 export function formatUsd(cents: number | null): string {
   if (cents == null) return "Not available";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
