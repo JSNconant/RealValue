@@ -28,34 +28,77 @@ export type ValuationResult = {
   disclaimers: string[];
 };
 
-export async function getDemoValuation(address: string): Promise<ValuationResult> {
+const CACHE_PREFIX = "realvalue:valuation:v1:";
+const CACHE_TTL_MS = 1000 * 60 * 60 * 6;
+const inFlightRequests = new Map<string, Promise<ValuationResult>>();
+
+function cacheKey(address: string, demo: boolean): string {
+  const normalized = address.trim().toLowerCase().replace(/\s+/g, " ");
+  return `${CACHE_PREFIX}${demo ? "demo" : "live"}:${normalized}`;
+}
+
+function readCached(key: string): ValuationResult | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { expiresAt: number; data: ValuationResult };
+    if (!parsed.expiresAt || Date.now() > parsed.expiresAt) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return parsed.data;
+  } catch {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+}
+
+function writeCached(key: string, data: ValuationResult): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify({ expiresAt: Date.now() + CACHE_TTL_MS, data }));
+}
+
+async function requestValuation(address: string, demo: boolean): Promise<ValuationResult> {
+  const key = cacheKey(address, demo);
+  const cached = readCached(key);
+  if (cached) return cached;
+
+  const existing = inFlightRequests.get(key);
+  if (existing) return existing;
+
   const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-  const response = await fetch(`${base}/api/v1/valuations`, {
+  const promise = fetch(`${base}/api/v1/valuations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address, demo: true }),
+    body: JSON.stringify({ address, demo }),
     cache: "no-store",
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.detail?.message || `Request failed (${response.status})`);
-  }
-  return response.json();
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.detail?.message || `Request failed (${response.status})`);
+      }
+      return response.json() as Promise<ValuationResult>;
+    })
+    .then((result) => {
+      writeCached(key, result);
+      return result;
+    })
+    .finally(() => {
+      inFlightRequests.delete(key);
+    });
+
+  inFlightRequests.set(key, promise);
+  return promise;
+}
+
+export async function getDemoValuation(address: string): Promise<ValuationResult> {
+  return requestValuation(address, true);
 }
 
 export async function getLiveValuation(address: string): Promise<ValuationResult> {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-  const response = await fetch(`${base}/api/v1/valuations`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address, demo: false }),
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.detail?.message || `Request failed (${response.status})`);
-  }
-  return response.json();
+  return requestValuation(address, false);
 }
 
 export function formatUsd(cents: number | null): string {

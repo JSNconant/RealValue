@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -35,6 +35,38 @@ app.add_middleware(
 )
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "demo_property.json"
+valuation_cache: dict[str, tuple[datetime, dict]] = {}
+
+
+def _normalize_address(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+def _valuation_cache_key(*, address: str, as_of: date, demo: bool) -> str:
+    mode = "demo" if demo else "live"
+    return f"{mode}:{as_of.isoformat()}:{_normalize_address(address)}"
+
+
+def _cache_get(key: str) -> dict | None:
+    cached = valuation_cache.get(key)
+    if not cached:
+        return None
+    expires_at, payload = cached
+    if expires_at <= datetime.now(timezone.utc):
+        valuation_cache.pop(key, None)
+        return None
+    return payload
+
+
+def _cache_set(key: str, payload: dict) -> None:
+    ttl = max(0, settings.valuation_cache_ttl_seconds)
+    if ttl == 0:
+        return
+    max_entries = max(1, settings.valuation_cache_max_entries)
+    if len(valuation_cache) >= max_entries:
+        oldest_key = min(valuation_cache.items(), key=lambda item: item[1][0])[0]
+        valuation_cache.pop(oldest_key, None)
+    valuation_cache[key] = (datetime.now(timezone.utc) + timedelta(seconds=ttl), payload)
 
 
 @app.get("/healthz")
@@ -51,6 +83,8 @@ def readyz():
         "demo_ready": settings.enable_demo_mode,
         "cors_allowed_origins": origins,
         "cors_allowed_origin_regex": origin_regex,
+        "valuation_cache_ttl_seconds": settings.valuation_cache_ttl_seconds,
+        "valuation_cache_entries": len(valuation_cache),
     }
 
 
@@ -159,10 +193,17 @@ def _demo_valuation(address: str, as_of: date) -> Valuation:
 @app.post("/api/v1/valuations")
 async def valuation(payload: ValuationRequest):
     as_of = payload.as_of_date or date.today()
+    cache_key = _valuation_cache_key(address=payload.address, as_of=as_of, demo=payload.demo)
+    cached_payload = _cache_get(cache_key)
+    if cached_payload is not None:
+        return cached_payload
+
     if payload.demo:
         if not settings.enable_demo_mode:
             raise HTTPException(status_code=404, detail={"code": "demo_disabled", "message": "Demo mode is disabled"})
-        return _demo_valuation(payload.address, as_of)
+        response = _demo_valuation(payload.address, as_of).model_dump(mode="json")
+        _cache_set(cache_key, response)
+        return response
 
     if not settings.enable_live_valuations or not settings.rentcast_api_key:
         raise HTTPException(status_code=503, detail={
@@ -256,7 +297,7 @@ async def valuation(payload: ValuationRequest):
         explanation = "The subject property type is outside the initial supported residential sales-comparison scope."
         disclaimers = ["PROPERTY TYPE NOT SUPPORTED", "Experimental estimate, not an appraisal", "No 5% accuracy claim"]
 
-    return Valuation(
+    response = Valuation(
         run_id=f"live-{uuid.uuid4()}",
         estimate_status=estimate_status,
         estimate_cents=qualifying["estimate_cents"],
@@ -276,7 +317,9 @@ async def valuation(payload: ValuationRequest):
         sources=sources,
         explanation=explanation,
         disclaimers=disclaimers,
-    )
+    ).model_dump(mode="json")
+    _cache_set(cache_key, response)
+    return response
 
 
 @app.get("/api/v1/valuations/{run_id}")

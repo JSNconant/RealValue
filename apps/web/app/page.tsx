@@ -34,6 +34,56 @@ export default function Home() {
     }
   }
 
+  async function downloadPdfReport() {
+    if (!result) return;
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const maxTextWidth = pageWidth - 80;
+    let y = 50;
+
+    const writeLine = (text: string, gap = 16, size = 11, bold = false) => {
+      doc.setFont("helvetica", bold ? "bold" : "normal");
+      doc.setFontSize(size);
+      const lines = doc.splitTextToSize(text, maxTextWidth);
+      doc.text(lines, 40, y);
+      y += lines.length * (size + 2) + gap;
+      if (y > 740) {
+        doc.addPage();
+        y = 50;
+      }
+    };
+
+    writeLine("RealValue Report", 10, 18, true);
+    writeLine(`Address: ${result.address}`, 4, 11, true);
+    writeLine(`Status: ${result.estimate_status.replaceAll("_", " ")}`, 4);
+    writeLine(`Estimate: ${formatUsd(result.estimate_cents)}`, 4);
+    writeLine(`As of: ${result.as_of_date}`, 10);
+
+    writeLine("Explanation", 4, 13, true);
+    writeLine(result.explanation, 10);
+
+    writeLine("Disclaimers", 4, 13, true);
+    for (const disclaimer of result.disclaimers) writeLine(`• ${disclaimer}`, 2);
+
+    writeLine("Comparable Sales", 4, 13, true);
+    if (result.comparables.length === 0) {
+      writeLine("No qualifying comparable sales were included.");
+    } else {
+      for (const comp of result.comparables) {
+        writeLine(
+          `• ${comp.address} | ${comp.transaction_date || "N/A"} | ${formatUsd(comp.sale_price_cents)} | ${(comp.weight * 100).toFixed(1)}%`,
+          2,
+        );
+      }
+    }
+
+    writeLine("Warnings", 4, 13, true);
+    for (const warning of result.warnings) writeLine(`• ${warning}`, 2);
+
+    doc.save(`realvalue-report-${result.address.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.pdf`);
+  }
+
   return (
     <main>
       <header className="topbar"><div className="brand">RealValue</div><p>Know what a home may be worth — and why.</p></header>
@@ -59,7 +109,7 @@ export default function Home() {
               <h1>{formatUsd(result.estimate_cents)}</h1>
               <p>{result.address}</p>
             </div>
-            <div className="status-card"><strong>Model status</strong><span>Not validated</span><small>As of {result.as_of_date}</small></div>
+            <div className="status-card"><strong>Model status</strong><span>Not validated</span><small>As of {result.as_of_date}</small><button type="button" className="report-button" onClick={downloadPdfReport}>Download PDF report</button></div>
           </div>
 
           <article className="card">

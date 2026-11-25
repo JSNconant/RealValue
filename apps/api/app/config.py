@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     enable_demo_mode: bool = True
     provider_request_timeout_seconds: float = 12
     max_searches_per_ip_per_hour: int = 30
+    valuation_cache_ttl_seconds: int = 21600
+    valuation_cache_max_entries: int = 200
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
