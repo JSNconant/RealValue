@@ -14,8 +14,14 @@ from .providers.rentcast import RentCastProvider
 from .schemas import AddressSearchRequest, Comparable, EstimateStatus, Evidence, Valuation, ValuationRequest
 from .valuation.comps import local_similarity_weight, robust_weighted_median
 from .valuation.live_comps import build_live_comparable_indicator
+from .db.session import init_db
 
 app = FastAPI(title="RealValue API", version="0.1.0")
+
+
+@app.on_event("startup")
+async def on_startup():
+    await init_db()
 
 origins = []
 for origin in settings.cors_allowed_origins.split(","):

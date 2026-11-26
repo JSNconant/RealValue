@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_env: str = "development"
+    database_url: str = ""
+    price_per_search_cents: int = 400
     rentcast_api_key: str = ""
     cors_allowed_origins: str = "http://localhost:3000"
     cors_allowed_origin_regex: str = r"https://.*\.vercel\.app"
