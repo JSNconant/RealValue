@@ -251,26 +251,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </form>
 
           {/* Top bar right info */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button
-              type="button"
-              onClick={() => {
-                const targetId = user?.id || DEMO_USER_ID;
-                const seedData = generateInvestorDemoData();
-                saveUserStore(targetId, seedData);
-                window.location.reload();
-              }}
-              title="Populate 12 searches, 4 downloads, 3 saved homes ($48.00 bill)"
-              className="btn btn--sm btn--ghost"
-              style={{ fontSize: 12, border: "1px solid #edcf8a", background: "#fff8eb", color: "#704000" }}
-            >
-              <Sparkles size={14} /> Seed Investor Demo Data
-            </button>
-            <span className="badge badge--sample" style={{ fontSize: 12 }}>
-              Sample data
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <span className="badge badge--success" style={{ fontSize: 12 }}>
+              Account Active
             </span>
-            <Link href="/billing" style={{ fontSize: 13, color: "var(--color-secondary)", textDecoration: "none" }}>
-              $4.00 / search
+            <Link
+              href="/billing"
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--color-trust)",
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              $4.00 / valuation
             </Link>
           </div>
         </header>

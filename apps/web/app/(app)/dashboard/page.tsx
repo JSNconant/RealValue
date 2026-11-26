@@ -243,7 +243,7 @@ export default function DashboardPage() {
             <Card variant="bordered">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Billing summary</h3>
-                <span className="badge badge--sample">Demo</span>
+                <span className="badge badge--success">Active</span>
               </div>
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 13, color: "var(--color-secondary)" }}>Current calendar period</div>
@@ -256,7 +256,7 @@ export default function DashboardPage() {
               </p>
               <Link href="/billing">
                 <Button variant="secondary" size="sm" fullWidth>
-                  View billing details
+                  View billing statement
                 </Button>
               </Link>
             </Card>

@@ -217,9 +217,13 @@ export default function ReportPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <Badge variant="sample">Sample data</Badge>
+              {cachedResult?.isSampleData ? (
+                <Badge variant="sample">Sample fixture</Badge>
+              ) : (
+                <Badge variant="blue">Attributable provider record</Badge>
+              )}
               <span style={{ fontSize: 13, color: "var(--color-secondary)" }}>
-                Model: fixture-comps-v0.1 • As of {new Date(record.createdAt).toLocaleDateString("en-US")}
+                Model: {cachedResult?.modelVersion || "sales-comps-v0.1"} • As of {new Date(record.createdAt).toLocaleDateString("en-US")}
               </span>
             </div>
             <h1 style={{ fontSize: 32, fontWeight: 700, margin: "0 0 6px" }}>{record.address}</h1>
