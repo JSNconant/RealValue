@@ -47,20 +47,31 @@ if db_url:
 
 async def init_db() -> bool:
     """
-    Called on FastAPI startup (or standalone).
+    Called on FastAPI startup.
     If a database URL is configured, creates all tables automatically.
+    Never blocks or throws exceptions so the server always becomes healthy.
     """
+    global engine, AsyncSessionLocal
     if not engine:
-        return False
+        db_url = get_async_database_url()
+        if not db_url:
+            logger.info("No DATABASE_URL configured; skipping DB init.")
+            return False
+        try:
+            engine = create_async_engine(db_url, echo=False, pool_pre_ping=True)
+            AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+        except Exception as exc:
+            logger.warning("Could not initialize PostgreSQL engine: %s", exc)
+            return False
+
     try:
-        # Import models so Base.metadata knows about them
         from . import models  # noqa: F401
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("Successfully checked/created all PostgreSQL tables")
+        logger.info("Successfully checked/created all PostgreSQL tables.")
         return True
     except Exception as exc:
-        logger.warning("Auto-creation of PostgreSQL tables failed (DB may not be reachable yet): %s", exc)
+        logger.warning("Auto-creation of PostgreSQL tables skipped: %s", exc)
         return False
 
 
